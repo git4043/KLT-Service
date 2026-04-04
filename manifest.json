@@ -1,0 +1,22 @@
+{
+    "name": "KLT AMC Service",
+    "short_name": "KLT Service",
+    "description": "AMC Service Management System for Diamond Machinery Manufacturing",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f1117",
+    "theme_color": "#0f1117",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "https://via.placeholder.com/192x192/6c5ce7/ffffff?text=KLT",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "https://via.placeholder.com/512x512/6c5ce7/ffffff?text=KLT",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

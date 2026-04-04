@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KLT AMC Service Management</title>
+    <meta name="description" content="AMC Service Management System for Diamond Machinery Manufacturing - Manage service requests, AMC contracts, and engineer assignments.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f1117">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Ionicons -->
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+
+    <!-- =====================================================
+         SUPABASE SDK
+         ===================================================== -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+    <!-- Splash Screen (shown while Firebase initializes) -->
+    <div id="splash-screen" style="
+        position:fixed;inset:0;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;
+        background:var(--bg-primary,#0f1117);z-index:9999;gap:20px;">
+        <div style="font-size:2rem;font-weight:700;background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent">KLT Service</div>
+        <div style="width:40px;height:40px;border:3px solid rgba(108,92,231,0.2);border-top-color:#6c5ce7;border-radius:50%;animation:spin 0.7s linear infinite"></div>
+        <div id="splash-msg" style="font-size:0.82rem;color:#8b92a5">Initializing...</div>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
+
+    <!-- Root Container: Login or App Shell will be rendered here -->
+    <div id="root"></div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts: Order matters! db → firebase → app → app2 -->
+    <script src="db.js"></script>
+    <script src="supabase_db.js"></script>
+    <script src="app.js"></script>
+    <script src="app2.js"></script>
+
+    <script>
+    // ---- Override db functions to use Firebase when ready ----
+    // Called AFTER all scripts load. Patches the global db functions
+    // so all existing app code uses Firestore automatically.
+    window.addEventListener('load', async () => {
+        const splashMsg = document.getElementById('splash-msg');
+
+        // Check if supabase config is present and valid
+        const hasSupabase = typeof SUPABASE_URL !== 'undefined' &&
+                            SUPABASE_URL !== 'PASTE_YOUR_SUPABASE_URL_HERE' &&
+                            SUPABASE_KEY !== 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
+
+        if (hasSupabase) {
+            splashMsg.textContent = 'Connecting to Supabase...';
+            const ok = await initSupabase();
+
+            if (ok) {
+                // Patch all db functions to use Supabase
+                window.dbAdd    = sbAdd;
+                window.dbGetAll = sbGetAll;
+                window.dbGet    = sbGet;
+                window.dbDelete = sbDelete;
+                window.dbCount  = sbCount;
+
+                splashMsg.textContent = 'Seeding demo data...';
+                await seedSupabase();
+
+                // Patch login to use Supabase Auth
+                window.__fbAuthLogin = async (email, password) => {
+                    const u = await sbLogin(email, password);
+                    return u !== null;
+                };
+
+                document.getElementById('splash-screen').style.display = 'none';
+                renderLogin(true); // true = remote auth mode
+                return;
+            }
+        }
+
+        // --- Fallback to IndexedDB (offline mode) ---
+        splashMsg.textContent = 'Using offline database...';
+        await seedDatabase();
+        document.getElementById('splash-screen').style.display = 'none';
+        renderLogin(false);
+    });
+    </script>
+
+</body>
+</html>
