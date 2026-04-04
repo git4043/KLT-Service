@@ -8,8 +8,8 @@
 // 4. Copy the "anon" public key and paste it below
 // ============================================================
 
-const SUPABASE_URL = "PASTE_YOUR_SUPABASE_URL_HERE";
-const SUPABASE_KEY = "PASTE_YOUR_SUPABASE_ANON_KEY_HERE";
+const SUPABASE_URL = "https://vmiekebmywnufejmcybe.supabase.co";
+const SUPABASE_KEY = "sb_publishable_Qc-6lLaIQSQVCsOxMzH-Og_1hEodj7i";
 
 // ---- Initialize Supabase ----
 let _sb = null;
@@ -18,6 +18,7 @@ let _sbReady = false;
 async function initSupabase() {
     try {
         if (!window.supabase) {
+            alert('⚠️ Network Block: The Supabase connection script is being blocked by your internet provider. Trying an alternative link...');
             console.warn('Supabase SDK not loaded. Falling back to IndexedDB.');
             return false;
         }
@@ -27,6 +28,7 @@ async function initSupabase() {
         console.log('✅ Supabase connected!');
         return true;
     } catch (err) {
+        alert('⚠️ Supabase Initialization Error: ' + err.message + '\n\nPlease ensure your API Key is copied correctly from Supabase!');
         console.error('Supabase init failed:', err);
         return false;
     }
@@ -79,8 +81,8 @@ async function sbLogin(email, password) {
     if (!_sbReady) return null;
     const { data, error } = await _sb.auth.signInWithPassword({ email, password });
     if (error) {
-         console.warn('Login error:', error.message);
-         return null;
+        console.warn('Login error:', error.message);
+        return null;
     }
     return data.user;
 }
@@ -90,8 +92,8 @@ async function sbCreateUser(email, password) {
     if (!_sbReady) return null;
     const { data, error } = await _sb.auth.signUp({ email, password });
     if (error) {
-         console.warn('Signup error:', error.message);
-         return null;
+        console.warn('Signup error:', error.message);
+        return null;
     }
     return data.user;
 }

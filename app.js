@@ -57,8 +57,8 @@ function renderRoot(html) {
 // ============================================================
 // LOGIN SCREEN
 // ============================================================
-function renderLogin(firebaseMode = false) {
-    window._firebaseMode = firebaseMode;
+function renderLogin(remoteMode = false) {
+    window._remoteMode = remoteMode;
     renderRoot(`
         <div class="login-screen">
             <div class="login-bg-glow glow-1"></div>
@@ -68,16 +68,6 @@ function renderLogin(firebaseMode = false) {
                     <h1>KLT Service</h1>
                     <p>Diamond Machinery AMC Management</p>
                 </div>
-                <div class="role-selector" id="role-selector">
-                    <button class="role-btn active" data-role="admin" id="role-admin" onclick="selectRole('admin')">
-                        <ion-icon name="shield-checkmark"></ion-icon>
-                        Admin
-                    </button>
-                    <button class="role-btn" data-role="engineer" id="role-engineer" onclick="selectRole('engineer')">
-                        <ion-icon name="construct"></ion-icon>
-                        Engineer
-                    </button>
-                </div>
                 <div class="form-group">
                     <label>Email / Mobile</label>
                     <input class="form-control" id="login-email" type="text" placeholder="Enter email or mobile" autocomplete="username">
@@ -86,34 +76,15 @@ function renderLogin(firebaseMode = false) {
                     <label>Password</label>
                     <input class="form-control" id="login-password" type="password" placeholder="Enter password" autocomplete="current-password">
                 </div>
-                <div id="login-hint" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:14px;padding:10px 14px;background:rgba(108,92,231,0.06);border-radius:var(--radius-md);border:1px solid var(--border-color);">
-                    <strong style="color:var(--primary-light);">Admin Demo:</strong> admin@klt.com / admin123
-                </div>
                 <button class="btn btn-primary btn-block" onclick="doLogin()">
                     <ion-icon name="log-in-outline"></ion-icon> Sign In
                 </button>
             </div>
         </div>
     `);
-    // Pre-fill
-    document.getElementById('login-email').value = 'admin@klt.com';
-    document.getElementById('login-password').value = 'admin123';
 }
 
-function selectRole(role) {
-    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('role-' + role).classList.add('active');
-    const hint = document.getElementById('login-hint');
-    const emailEl = document.getElementById('login-email');
-    const passEl = document.getElementById('login-password');
-    if (role === 'admin') {
-        hint.innerHTML = '<strong style="color:var(--primary-light);">Admin Demo:</strong> admin@klt.com / admin123';
-        emailEl.value = 'admin@klt.com'; passEl.value = 'admin123';
-    } else {
-        hint.innerHTML = '<strong style="color:var(--primary-light);">Engineer Demo:</strong> vipul@klt.com / eng123';
-        emailEl.value = 'vipul@klt.com'; passEl.value = 'eng123';
-    }
-}
+
 
 async function checkAndCreateAMCTickets() {
     try {
@@ -178,12 +149,12 @@ async function doLogin() {
 
     let authOk = true;
 
-    // Firebase Auth check (when online)
-    if (window._firebaseMode && window.__fbAuthLogin) {
-        authOk = await window.__fbAuthLogin(email, pass);
+    // Supabase Auth check (when online)
+    if (window._remoteMode && window.__remoteAuthLogin) {
+        authOk = await window.__remoteAuthLogin(email, pass);
         if (!authOk) {
             if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
-            return showToast('Invalid Firebase credentials', 'error');
+            return showToast('Invalid Supabase credentials', 'error');
         }
     }
 
