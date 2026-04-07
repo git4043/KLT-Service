@@ -736,10 +736,14 @@ function renderFilteredTickets() {
 // TICKET MODAL
 // ============================================================
 async function openTicketModal(ticketId = null) {
-    const [t, customers, machines, engineers] = await Promise.all([
+    const [t, customers, machines, engineers, allTickets] = await Promise.all([
         ticketId ? dbGet(STORES.tickets, ticketId) : Promise.resolve(null),
-        dbGetAll(STORES.customers), dbGetAll(STORES.machines), dbGetAll(STORES.users)
+        dbGetAll(STORES.customers), dbGetAll(STORES.machines), dbGetAll(STORES.users),
+        dbGetAll(STORES.tickets)
     ]);
+    // Build unique sorted title suggestions from all existing tickets
+    const titleSuggestions = [...new Set(allTickets.map(tk => tk.title).filter(Boolean))].sort();
+    window._titleSuggestions = titleSuggestions;
     const engineerOptions = engineers.filter(e => (e.role === 'engineer' || e.role === 'manager') && e.status === 'active')
         .map(e => `<option value="${e.id}" ${t && t.assignedTo === e.id ? 'selected' : ''}>${e.name}</option>`).join('');
 
@@ -760,7 +764,14 @@ async function openTicketModal(ticketId = null) {
         </div>
         <div class="form-group">
             <label>Issue Title</label>
-            <input class="form-control" id="ct-title" value="${t ? t.title : ''}" placeholder="Short description">
+            <div class="autocomplete-wrap" id="title-ac-wrap">
+                <input class="form-control" id="ct-title" value="${t ? t.title : ''}" placeholder="Type to search or enter new..."
+                    autocomplete="off"
+                    oninput="filterTitles(this.value)"
+                    onkeydown="acKeyNav(event)"
+                    onblur="setTimeout(closeAcList, 180)">
+                <ul class="autocomplete-list" id="title-ac-list" style="display:none"></ul>
+            </div>
         </div>
         <div class="form-group">
             <label>Detailed Description</label>
@@ -810,6 +821,63 @@ async function openTicketModal(ticketId = null) {
         else renderAdminDashboard();
     });
     window._allMachines = machines;
+    // Activate autocomplete after modal DOM is ready
+    setTimeout(() => setupTitleAutocomplete(), 50);
+}
+
+// ---- Title Autocomplete Logic ----
+function setupTitleAutocomplete() {
+    const inp = document.getElementById('ct-title');
+    if (inp && inp.value) filterTitles(inp.value);
+}
+
+function filterTitles(query) {
+    const list = document.getElementById('title-ac-list');
+    if (!list) return;
+    const suggestions = window._titleSuggestions || [];
+    const q = query.trim().toLowerCase();
+    if (!q) { list.style.display = 'none'; return; }
+    const matches = suggestions.filter(s => s.toLowerCase().includes(q)).slice(0, 10);
+    if (matches.length === 0) { list.style.display = 'none'; return; }
+    list.innerHTML = matches.map((s, i) =>
+        `<li id="ac-item-${i}" onclick="selectTitle('${s.replace(/'/g, "\\'")}')"><ion-icon name="text-outline"></ion-icon>${s}</li>`
+    ).join('');
+    list.style.display = 'block';
+    list._activeIdx = -1;
+}
+
+function selectTitle(val) {
+    const inp = document.getElementById('ct-title');
+    if (inp) inp.value = val;
+    closeAcList();
+}
+
+function closeAcList() {
+    const list = document.getElementById('title-ac-list');
+    if (list) list.style.display = 'none';
+}
+
+function acKeyNav(e) {
+    const list = document.getElementById('title-ac-list');
+    if (!list || list.style.display === 'none') return;
+    const items = list.querySelectorAll('li');
+    let idx = list._activeIdx || -1;
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        idx = (idx + 1) % items.length;
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        idx = (idx - 1 + items.length) % items.length;
+    } else if (e.key === 'Enter' && idx >= 0) {
+        e.preventDefault();
+        selectTitle(items[idx].textContent.trim());
+        return;
+    } else if (e.key === 'Escape') {
+        closeAcList(); return;
+    } else { return; }
+    items.forEach((li, i) => li.classList.toggle('ac-active', i === idx));
+    if (items[idx]) items[idx].scrollIntoView({ block: 'nearest' });
+    list._activeIdx = idx;
 }
 
 async function openTicketDetail(ticketId) {

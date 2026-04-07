@@ -40,10 +40,27 @@ async function renderMachines() {
 }
 
 async function openMachineModal(machId = null) {
-    const [m, customers] = await Promise.all([
+    const [m, customers, allMachines] = await Promise.all([
         machId ? dbGet(STORES.machines, machId) : Promise.resolve(null),
-        dbGetAll(STORES.customers)
+        dbGetAll(STORES.customers),
+        dbGetAll(STORES.machines)
     ]);
+    window._allMachinesForId = allMachines;
+
+    // Compute the next auto ID for current year
+    function nextMachineId(year) {
+        const prefix = String(year);
+        const existing = (window._allMachinesForId || []).map(mx => mx.id)
+            .filter(id => id && id.startsWith(prefix))
+            .map(id => parseInt(id.slice(4), 10))
+            .filter(n => !isNaN(n));
+        const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+        return prefix + String(next).padStart(3, '0');
+    }
+
+    const installYear = m ? new Date(m.installDate || Date.now()).getFullYear() : new Date().getFullYear();
+    const autoId = m ? m.id : nextMachineId(installYear);
+
     openModal('mach-modal', m ? 'Edit Machine' : 'Add Machine', `
         <div class="form-group"><label>Customer</label>
             <select class="form-control" id="mach-cust">
@@ -52,9 +69,9 @@ async function openMachineModal(machId = null) {
             </select>
         </div>
         <div class="form-group"><label>Machine Type</label><input class="form-control" id="mach-type" value="${m ? m.machineType : ''}" placeholder="e.g. Z-Axis Cutter Pro"></div>
-        <div class="form-group"><label>Serial Number</label><input class="form-control" id="mach-serial" value="${m ? m.serialNumber : ''}" placeholder="KLT-Z99-2024-001"></div>
-        <div class="form-group"><label>Machine ID</label><input class="form-control" id="mach-id" value="${m ? m.id : ''}" placeholder="MAC-Z99" ${m ? 'readonly' : ''}></div>
-        <div class="form-group"><label>Installation Date</label><input class="form-control" id="mach-date" type="date" value="${m ? m.installDate : ''}"></div>
+        <div class="form-group"><label>Serial Number <span style="color:var(--text-muted);font-weight:400">(Optional)</span></label><input class="form-control" id="mach-serial" value="${m ? m.serialNumber : ''}" placeholder="Leave blank if not available"></div>
+        <div class="form-group"><label>Machine ID <span style="color:var(--text-muted);font-weight:400">(auto-generated from year)</span></label><input class="form-control" id="mach-id" value="${autoId}" placeholder="e.g. 2026001" ${m ? 'readonly' : ''} style="font-weight:700;color:var(--primary-light)"></div>
+        <div class="form-group"><label>Installation Date</label><input class="form-control" id="mach-date" type="date" value="${m ? m.installDate : ''}" ${m ? '' : 'onchange="updateAutoMachineId()"'}></div>
         <div class="form-group"><label>Status</label>
             <select class="form-control" id="mach-status">
                 <option value="active" ${!m || m.status === 'active' ? 'selected' : ''}>Active</option>
@@ -66,16 +83,31 @@ async function openMachineModal(machId = null) {
         const custId = document.getElementById('mach-cust').value;
         const type = document.getElementById('mach-type').value.trim();
         const serial = document.getElementById('mach-serial').value.trim();
-        const mid = document.getElementById('mach-id').value.trim();
-        if (!custId || !type || !mid) return showToast('Customer, type, and ID are required', 'warning');
+        const mid = document.getElementById('mach-id').value.trim() || autoId;
+        if (!custId || !type) return showToast('Customer and Machine Type are required', 'warning');
         await dbAdd(STORES.machines, {
-            id: mid, customerId: custId, machineType: type, serialNumber: serial,
+            id: mid, customerId: custId, machineType: type, serialNumber: serial || null,
             installDate: document.getElementById('mach-date').value,
             status: document.getElementById('mach-status').value,
             createdAt: m ? m.createdAt : new Date().toISOString(),
         });
         closeModal(); showToast(m ? 'Machine updated' : 'Machine added', 'success'); renderMachines();
     });
+}
+
+// Update the Machine ID field when install date changes (new machine only)
+function updateAutoMachineId() {
+    const dateVal = document.getElementById('mach-date')?.value;
+    const year = dateVal ? new Date(dateVal).getFullYear() : new Date().getFullYear();
+    const prefix = String(year);
+    const existing = (window._allMachinesForId || []).map(mx => mx.id)
+        .filter(id => id && id.startsWith(prefix))
+        .map(id => parseInt(id.slice(4), 10))
+        .filter(n => !isNaN(n));
+    const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    const newId = prefix + String(next).padStart(3, '0');
+    const inp = document.getElementById('mach-id');
+    if (inp && !inp.readOnly) inp.value = newId;
 }
 
 async function deleteMachine(id) {

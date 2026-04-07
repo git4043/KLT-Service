@@ -222,6 +222,53 @@ select.form-control option {
 
 textarea.form-control { resize: vertical; min-height: 80px; }
 
+/* ---- Autocomplete Dropdown ---- */
+.autocomplete-wrap {
+    position: relative;
+}
+
+.autocomplete-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-active);
+    border-radius: var(--radius-md);
+    z-index: 2000;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+    animation: fadeSlideUp 0.15s ease;
+}
+
+.autocomplete-list li {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s;
+    border-bottom: 1px solid rgba(108,92,231,0.07);
+}
+
+.autocomplete-list li:last-child { border-bottom: none; }
+
+.autocomplete-list li:hover,
+.autocomplete-list li.ac-active {
+    background: rgba(108, 92, 231, 0.12);
+    color: var(--primary-light);
+}
+
+.autocomplete-list li ion-icon {
+    font-size: 0.95rem;
+    flex-shrink: 0;
+    color: var(--primary-light);
+    opacity: 0.7;
+}
+
 /* ---- Buttons ---- */
 .btn {
     display: inline-flex;
