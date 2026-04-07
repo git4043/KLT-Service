@@ -479,12 +479,26 @@ function renderAppShell() {
     navTo(activeAdminMode ? 'dashboard' : 'eng-dashboard');
     updateOpenBadge();
 
-    // Enable auto data refresh across the whole app
-    window.refreshCurrentView = () => {
-        if (State.currentView) navTo(State.currentView);
-    };
+    // ---- Auto Refresh on Database Changes (Realtime) ----
+    if (window._autoRefreshTimer) {
+        clearInterval(window._autoRefreshTimer);
+        window._autoRefreshTimer = null;
+    }
+
     if (window.sbEnableRealtime) {
-        window.sbEnableRealtime(window.refreshCurrentView);
+        window.sbEnableRealtime(() => {
+            // Skip if a modal is open
+            const modalOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
+            if (modalOpen) return;
+            
+            // Skip if user is actively typing inside any input or textarea
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+            
+            // Refresh the current page view silently
+            if (State.currentView) navTo(State.currentView);
+            updateOpenBadge();
+        });
     }
 }
 
