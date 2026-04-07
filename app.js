@@ -6,10 +6,71 @@
 const State = {
     currentUser: null,
     currentView: null,
-    currentRole: null, // 'admin' | 'engineer'
+    currentRole: null, // 'admin' | 'manager' | 'engineer'
     ticketFilter: 'all',
     ticketSearch: '',
 };
+
+// ---- Session Management ----
+const SESSION_KEY = 'klt_session';
+
+function generateSessionToken() {
+    return 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+function saveSession(user, token) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, token }));
+}
+
+function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+}
+
+function getSavedSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+}
+
+// Poll every 60s to detect if another device has taken over the session
+let _sessionPollTimer = null;
+function startSessionPoll(userId, token) {
+    if (_sessionPollTimer) clearInterval(_sessionPollTimer);
+    _sessionPollTimer = setInterval(async () => {
+        try {
+            const users = await dbGetAll(STORES.users);
+            const fresh = users.find(u => u.id === userId);
+            if (!fresh || fresh.activeSession !== token) {
+                clearInterval(_sessionPollTimer);
+                clearSession();
+                State.currentUser = null;
+                State.currentRole = null;
+                showToast('⚠️ Logged out — another device signed in.', 'warning');
+                setTimeout(() => renderLogin(window._remoteMode || false), 1500);
+            }
+        } catch (e) { /* ignore network errors silently */ }
+    }, 60000);
+}
+
+async function tryAutoLogin() {
+    const saved = getSavedSession();
+    if (!saved) return false;
+    try {
+        const users = await dbGetAll(STORES.users);
+        const user = users.find(u => u.id === saved.userId);
+        if (!user || user.activeSession !== saved.token || user.status === 'inactive') {
+            clearSession();
+            return false;
+        }
+        State.currentUser = user;
+        State.currentRole = user.role;
+        startSessionPoll(user.id, saved.token);
+        await checkAndCreateAMCTickets();
+        renderAppShell();
+        showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 // ---- Toast ----
 function showToast(msg, type = 'info') {
@@ -193,9 +254,26 @@ async function doLogin() {
         if (!user) return showToast('Invalid credentials', 'error');
         if (user.status === 'inactive') return showToast('Account is inactive. Contact admin.', 'error');
 
+        // Generate a unique session token for this device
+        const token = generateSessionToken();
+
+        // Write session token to Supabase (this kicks out any other device)
+        try {
+            user.activeSession = token;
+            await dbAdd(STORES.users, user);
+        } catch (e) {
+            console.warn('Could not write session token:', e);
+        }
+
+        // Persist session locally for auto-login on next open
+        saveSession(user, token);
+
         State.currentUser = user;
         State.currentRole = user.role;
         showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
+
+        // Start polling to detect session theft by another device
+        startSessionPoll(user.id, token);
         
         // Auto-create tickets for expired AMCs
         await checkAndCreateAMCTickets();
@@ -422,9 +500,16 @@ function navTo(view) {
 }
 
 function doLogout() {
+    // Clear Supabase session token so other devices aren't affected
+    if (State.currentUser) {
+        const u = { ...State.currentUser, activeSession: null };
+        dbAdd(STORES.users, u).catch(() => {});
+    }
+    if (_sessionPollTimer) clearInterval(_sessionPollTimer);
+    clearSession();
     State.currentUser = null;
     State.currentRole = null;
-    renderLogin();
+    renderLogin(window._remoteMode || false);
 }
 
 async function updateOpenBadge() {

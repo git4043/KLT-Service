@@ -80,9 +80,15 @@
                     // Start application on cloud
                     // Disabling native Supabase Auth validation to rely solely on our public.users table.
                     window.__remoteAuthLogin = null;
+                    window._remoteMode = true;
 
                     document.getElementById('splash-screen').style.display = 'none';
-                    renderLogin(true);
+
+                    // Try auto-login from saved session first
+                    const autoLoggedIn = await tryAutoLogin();
+                    if (!autoLoggedIn) {
+                        renderLogin(true);
+                    }
                     return;
                 }
             }

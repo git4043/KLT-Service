@@ -24,7 +24,8 @@ CREATE TABLE users (
   skill TEXT,
   area TEXT,
   status TEXT,
-  "createdAt" TEXT
+  "createdAt" TEXT,
+  "activeSession" TEXT
 );
 
 -- 2. Customers Table
@@ -113,3 +114,6 @@ VALUES ('usr-admin', 'KLT Admin', 'admin@klt.com', '9876543210', 'admin123', 'ad
 -- 9. Seed Default Manager User
 INSERT INTO users (id, name, email, mobile, password, role, status, "createdAt")
 VALUES ('usr-manager', 'Sarah Manager', 'mgr@klt.com', '9876543211', 'mgr123', 'manager', 'active', CURRENT_TIMESTAMP::text);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "activeSession" TEXT;
+
