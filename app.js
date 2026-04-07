@@ -19,22 +19,39 @@ function generateSessionToken() {
 }
 
 function saveSession(user, token) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ userId: user.id, token }));
+    // Store full user + token so we can auto-login even when offline
+    const data = JSON.stringify({ userId: user.id, token, user });
+    try { localStorage.setItem(SESSION_KEY, data); } catch (e) {}
+    // Cookie as backup (30 day expiry) - persists across APK restarts
+    try {
+        const exp = new Date(Date.now() + 30 * 86400000).toUTCString();
+        document.cookie = `klt_session=${encodeURIComponent(data)};expires=${exp};path=/;SameSite=Lax`;
+    } catch (e) {}
 }
 
 function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    try { document.cookie = 'klt_session=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/'; } catch (e) {}
 }
 
 function getSavedSession() {
-    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
+    try {
+        // Try localStorage first
+        const ls = localStorage.getItem(SESSION_KEY);
+        if (ls) return JSON.parse(ls);
+        // Fall back to cookie
+        const match = document.cookie.match(/klt_session=([^;]+)/);
+        if (match) return JSON.parse(decodeURIComponent(match[1]));
+    } catch (e) {}
+    return null;
 }
 
-// Poll every 60s to detect if another device has taken over the session
+// Poll every 60s (online only) to detect if another device has taken over the session
 let _sessionPollTimer = null;
 function startSessionPoll(userId, token) {
     if (_sessionPollTimer) clearInterval(_sessionPollTimer);
     _sessionPollTimer = setInterval(async () => {
+        if (!navigator.onLine) return; // skip poll if offline
         try {
             const users = await dbGetAll(STORES.users);
             const fresh = users.find(u => u.id === userId);
@@ -45,6 +62,9 @@ function startSessionPoll(userId, token) {
                 State.currentRole = null;
                 showToast('⚠️ Logged out — another device signed in.', 'warning');
                 setTimeout(() => renderLogin(window._remoteMode || false), 1500);
+            } else {
+                // Update cached user data with latest from DB
+                saveSession(fresh, token);
             }
         } catch (e) { /* ignore network errors silently */ }
     }, 60000);
@@ -53,13 +73,17 @@ function startSessionPoll(userId, token) {
 async function tryAutoLogin() {
     const saved = getSavedSession();
     if (!saved) return false;
+
     try {
+        // --- Online path: validate session token against Supabase ---
         const users = await dbGetAll(STORES.users);
         const user = users.find(u => u.id === saved.userId);
         if (!user || user.activeSession !== saved.token || user.status === 'inactive') {
             clearSession();
             return false;
         }
+        // Refresh the cached user data
+        saveSession(user, saved.token);
         State.currentUser = user;
         State.currentRole = user.role;
         startSessionPoll(user.id, saved.token);
@@ -68,6 +92,18 @@ async function tryAutoLogin() {
         showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
         return true;
     } catch (e) {
+        // --- Offline path: Supabase unreachable, use cached user object ---
+        if (saved.user && saved.token) {
+            console.log('Auto-login: offline mode, using cached session.');
+            State.currentUser = saved.user;
+            State.currentRole = saved.user.role;
+            // Start poll — it will be skipped while offline and kick in when back online
+            startSessionPoll(saved.userId, saved.token);
+            try { await checkAndCreateAMCTickets(); } catch (_) {}
+            renderAppShell();
+            showToast(`Welcome back, ${saved.user.name.split(' ')[0]}! (Offline)`, 'info');
+            return true;
+        }
         return false;
     }
 }
