@@ -340,6 +340,14 @@ function renderAppShell() {
     // Navigate to default view
     navTo(isAdmin ? 'dashboard' : 'eng-dashboard');
     updateOpenBadge();
+
+    // Enable auto data refresh across the whole app
+    window.refreshCurrentView = () => {
+        if (State.currentView) navTo(State.currentView);
+    };
+    if (window.sbEnableRealtime) {
+        window.sbEnableRealtime(window.refreshCurrentView);
+    }
 }
 
 function toggleSidebar() {

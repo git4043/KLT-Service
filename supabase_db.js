@@ -110,8 +110,28 @@ async function sbCreateUser(email, password) {
     if (!_sbReady) return null;
     const { data, error } = await _sb.auth.signUp({ email, password });
     if (error) return null;
-    return data.user;
+    return data;
 }
+
+// ---- Auto Refresh / Realtime ----
+window.sbEnableRealtime = function(callback) {
+    if (!_sbReady) return;
+    _sb.channel('public:all-tables')
+        .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
+            console.log('Realtime DB Change:', payload);
+            if (callback) callback();
+        })
+        .subscribe((status) => {
+            console.log('Supabase Realtime Status:', status);
+        });
+    
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && callback) {
+            console.log('App resumed: Refreshing data...');
+            callback();
+        }
+    });
+};
 
 // ---- Seed Supabase with demo data (runs only once) ----
 async function seedSupabase() {

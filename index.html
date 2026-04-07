@@ -9,6 +9,8 @@
         content="AMC Service Management System for Diamond Machinery Manufacturing - Manage service requests, AMC contracts, and engineer assignments.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="customer-service.png">
+    <link rel="apple-touch-icon" href="customer-service.png">
     <meta name="theme-color" content="#0f1117">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -90,7 +92,17 @@
                 '<div style="font-size:0.8rem;margin-top:8px">Please check your Supabase URL & Key in supabase_db.js</div>';
         });
     </script>
-
+    
+    <!-- Service Worker Registration for Offline Support and Speed -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Service Worker registered successfully!', reg.scope))
+                    .catch(err => console.error('Service Worker registration failed:', err));
+            });
+        }
+    </script>
 </body>
 
 </html>
