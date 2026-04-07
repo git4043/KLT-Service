@@ -49,6 +49,29 @@ function amcStatusBadge(status) {
     return `<span class="badge badge-${status}">${status}</span>`;
 }
 
+// ---- Formatters ----
+function generateId(prefix) {
+    return prefix + '-' + Date.now().toString().slice(-5) + Math.floor(10 + Math.random() * 90);
+}
+
+function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function timeAgo(iso) {
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return Math.floor(diff / 86400000) + 'd ago';
+}
+
+function currency(amount) {
+    return '₹' + Number(amount).toLocaleString('en-IN');
+}
+
 // ---- Render Root ----
 function renderRoot(html) {
     document.getElementById('root').innerHTML = html;
@@ -147,36 +170,50 @@ async function doLogin() {
     const btn = document.querySelector('.login-card .btn-primary');
     if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
 
-    let authOk = true;
+    try {
+        let authOk = true;
 
-    // Supabase Auth check (when online)
-    if (window._remoteMode && window.__remoteAuthLogin) {
-        authOk = await window.__remoteAuthLogin(email, pass);
-        if (!authOk) {
-            if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
-            return showToast('Invalid Supabase credentials', 'error');
+        // Supabase Auth check (when online)
+        if (window._remoteMode && window.__remoteAuthLogin) {
+            authOk = await window.__remoteAuthLogin(email, pass);
+            if (!authOk) {
+                if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
+                return showToast('Invalid Supabase credentials', 'error');
+            }
         }
+
+        // Always verify from local/Firestore user store
+        const users = await dbGetAll(STORES.users);
+        const user = users.find(u =>
+            (u.email === email || u.mobile === email) && u.password === pass
+        );
+
+        if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
+
+        if (!user) return showToast('Invalid credentials', 'error');
+        if (user.status === 'inactive') return showToast('Account is inactive. Contact admin.', 'error');
+
+        State.currentUser = user;
+        State.currentRole = user.role;
+        showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
+        
+        // Auto-create tickets for expired AMCs
+        await checkAndCreateAMCTickets();
+        
+        renderAppShell();
+    } catch (error) {
+        if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
+        // Supabase error usually comes as { message: "...", code: "..."}
+        let msg = error.message || error.toString();
+        
+        // Explicitly catch the "table does not exist" error
+        if (msg.includes('relation "public.users" does not exist')) {
+            msg = "The database tables haven't been created yet. Please run schema.sql first.";
+        }
+        
+        showToast('Login Error: ' + msg, 'error');
+        console.error("Login Error:", error);
     }
-
-    // Always verify from local/Firestore user store
-    const users = await dbGetAll(STORES.users);
-    const user = users.find(u =>
-        (u.email === email || u.mobile === email) && u.password === pass
-    );
-
-    if (btn) { btn.innerHTML = '<ion-icon name="log-in-outline"></ion-icon> Sign In'; btn.disabled = false; }
-
-    if (!user) return showToast('Invalid credentials', 'error');
-    if (user.status === 'inactive') return showToast('Account is inactive. Contact admin.', 'error');
-
-    State.currentUser = user;
-    State.currentRole = user.role;
-    showToast(`Welcome back, ${user.name.split(' ')[0]}!`, 'success');
-    
-    // Auto-create tickets for expired AMCs
-    await checkAndCreateAMCTickets();
-    
-    renderAppShell();
 }
 
 // ============================================================
@@ -636,6 +673,14 @@ async function openTicketDetail(ticketId) {
             <button class="btn btn-secondary btn-sm mt-8" onclick="saveFeedback('${ticket.id}')">Save Feedback</button>
         </div>
         ` : ticket.rating ? `<div class="detail-section mt-16"><div class="detail-label">Customer Rating</div><div style="color:var(--warning);font-size:1.2rem">${'★'.repeat(ticket.rating)}${'☆'.repeat(5-ticket.rating)}</div></div>` : ''}
+
+        ${isAdmin ? `
+        <div class="detail-section mt-24 pt-16" style="border-top:1px dashed var(--border-color)">
+            <button class="btn btn-danger btn-sm" onclick="deleteTicket('${ticket.id}')">
+                <ion-icon name="trash-outline"></ion-icon> Delete Ticket Forever
+            </button>
+        </div>
+        ` : ''}
     `);
 }
 
@@ -681,6 +726,17 @@ async function cancelTicket(ticketId) {
     showToast('Ticket cancelled', 'info');
     updateOpenBadge();
     if (State.currentView === 'tickets') renderTicketsView();
+    else renderAdminDashboard();
+}
+
+async function deleteTicket(id) {
+    if (!confirm('Are you sure you want to delete this ticket forever? This cannot be undone.')) return;
+    await dbDelete(STORES.tickets, id);
+    closeModal();
+    showToast('Ticket deleted successfully', 'info');
+    updateOpenBadge();
+    if (State.currentView === 'tickets') renderTicketsView();
+    else renderAdminDashboard();
 }
 
 async function addNote(ticketId) {

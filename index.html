@@ -23,7 +23,7 @@
     <!-- =====================================================
          SUPABASE SDK
          ===================================================== -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -34,7 +34,7 @@
         align-items:center;justify-content:center;
         background:var(--bg-primary,#0f1117);z-index:9999;gap:20px;">
         <div
-            style="font-size:2rem;font-weight:700;background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent">
+            style="font-size:2rem;font-weight:700;background:linear-gradient(135deg,#6c5ce7,#a29bfe);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">
             KLT Service</div>
         <div
             style="width:40px;height:40px;border:3px solid rgba(108,92,231,0.2);border-top-color:#6c5ce7;border-radius:50%;animation:spin 0.7s linear infinite">
@@ -55,56 +55,39 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <!-- Scripts: Order matters! db → firebase → app → app2 -->
-    <script src="db.js"></script>
-    <script src="supabase_db.js"></script>
-    <script src="app.js"></script>
-    <script src="app2.js"></script>
+    <!-- Scripts: Order matters! Supabase → App -->
+    <script src="supabase_db.js?v=3"></script>
+    <script src="app.js?v=3"></script>
+    <script src="app2.js?v=3"></script>
 
     <script>
-        // ---- Override db functions to use Firebase when ready ----
-        // Called AFTER all scripts load. Patches the global db functions
-        // so all existing app code uses Firestore automatically.
+        // ---- Unified Cloud Initialization ----
         window.addEventListener('load', async () => {
             const splashMsg = document.getElementById('splash-msg');
 
-            // Check if supabase config is present and valid
-            const hasSupabase = typeof SUPABASE_URL !== 'undefined' &&
-                SUPABASE_URL !== 'https://vmiekebmywnufejmcybe.supabase.co' &&
-                SUPABASE_KEY !== 'sb_publishable_Qc-6lLaIQSQVCsOxMzH-Og_1hEodj7i';
+            // Check if supabase config is present
+            const isConfigured = typeof SUPABASE_URL !== 'undefined' &&
+                SUPABASE_URL !== 'PASTE_YOUR_SUPABASE_URL_HERE' &&
+                SUPABASE_KEY !== 'PASTE_YOUR_SUPABASE_ANON_KEY_HERE';
 
-            if (hasSupabase) {
-                splashMsg.textContent = 'Connecting to Supabase...';
+            if (isConfigured) {
+                splashMsg.textContent = 'Connecting to Supabase Cloud...';
                 const ok = await initSupabase();
 
                 if (ok) {
-                    // Patch all db functions to use Supabase
-                    window.dbAdd = sbAdd;
-                    window.dbGetAll = sbGetAll;
-                    window.dbGet = sbGet;
-                    window.dbDelete = sbDelete;
-                    window.dbCount = sbCount;
-
-                    splashMsg.textContent = 'Seeding demo data...';
-                    await seedSupabase();
-
-                    // Patch login to use Supabase Auth
-                    window.__remoteAuthLogin = async (email, password) => {
-                        const u = await sbLogin(email, password);
-                        return u !== null;
-                    };
+                    // Start application on cloud
+                    // Disabling native Supabase Auth validation to rely solely on our public.users table.
+                    window.__remoteAuthLogin = null;
 
                     document.getElementById('splash-screen').style.display = 'none';
-                    renderLogin(true); // true = remote auth mode
+                    renderLogin(true);
                     return;
                 }
             }
 
-            // --- Fallback to IndexedDB (offline mode) ---
-            splashMsg.textContent = 'Using offline database...';
-            await seedDatabase();
-            document.getElementById('splash-screen').style.display = 'none';
-            renderLogin(false);
+            // Error state if Cloud is not active
+            splashMsg.innerHTML = '<div style="color:var(--danger);font-weight:bold">CLOUD CONNECTION FAILED</div>' +
+                '<div style="font-size:0.8rem;margin-top:8px">Please check your Supabase URL & Key in supabase_db.js</div>';
         });
     </script>
 
