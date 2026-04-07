@@ -29,7 +29,7 @@ async function renderMachines() {
                                 <td><span class="badge badge-${m.status}">${m.status}</span></td>
                                 <td><div class="d-flex gap-8">
                                     <button class="btn btn-sm btn-secondary" onclick="openMachineModal('${m.id}')">Edit</button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteMachine('${m.id}')">Delete</button>
+                                    ${State.currentUser.role === 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteMachine('${m.id}')">Delete</button>` : ''}
                                 </div></td>
                             </tr>`).join('')}
                     </tbody>
@@ -117,6 +117,7 @@ async function renderAMC() {
                         const daysLeft = Math.ceil((endDate - today) / 86400000);
                         const paidAmt = (amc.payments || []).reduce((s, p) => s + Number(p.amount), 0);
                         const paidPct = Math.min(100, Math.round((paidAmt / amc.totalAmount) * 100));
+                        const isManager = State.currentUser.role === 'manager';
 
                         return `
                         <div class="ticket-card priority-${isExpired ? 'critical' : isExpiring ? 'high' : 'low'}" onclick="openAMCDetail('${amc.id}')">
@@ -132,13 +133,14 @@ async function renderAMC() {
                                 ? `<div class="alert-banner warning" style="margin:0 0 12px;padding:8px 14px"><ion-icon name="time-outline"></ion-icon><span>Expires in ${daysLeft} days</span></div>`
                                 : ''
                             }
+                            ${!isManager ? `
                             <div class="d-flex justify-between align-center fs-sm mb-8">
                                 <span class="text-muted">Payment: ${currency(paidAmt)} / ${currency(amc.totalAmount)}</span>
                                 <span class="fw-600 ${paidPct === 100 ? 'text-success' : 'text-warning'}">${paidPct}%</span>
                             </div>
                             <div class="progress-bar">
                                 <div class="progress-fill ${paidPct === 100 ? 'success' : 'warning'}" style="width:${paidPct}%"></div>
-                            </div>
+                            </div>` : ''}
                         </div>`;
                     }).join('')}
             </div>
@@ -157,18 +159,22 @@ async function openAMCDetail(amcId) {
     const paidAmt = (amc.payments || []).reduce((s, p) => s + Number(p.amount), 0);
     const due = amc.totalAmount - paidAmt;
 
+    const isManager = State.currentUser.role === 'manager';
+
     openModal('amc-detail', `AMC: ${amc.id}`, `
         <div class="detail-grid mb-24">
             <div class="detail-section"><div class="detail-label">Customer</div><div class="detail-value fw-600">${custMap[amc.customerId]}</div></div>
             <div class="detail-section"><div class="detail-label">Machine</div><div class="detail-value">${machMap[amc.machineId]}</div></div>
             <div class="detail-section"><div class="detail-label">Start Date</div><div class="detail-value">${formatDate(amc.startDate)}</div></div>
             <div class="detail-section"><div class="detail-label">End Date</div><div class="detail-value">${formatDate(amc.endDate)}</div></div>
+            ${!isManager ? `
             <div class="detail-section"><div class="detail-label">Total Amount</div><div class="detail-value fw-600 text-primary">${currency(amc.totalAmount)}</div></div>
             <div class="detail-section"><div class="detail-label">Payment Terms</div><div class="detail-value">${amcStatusBadge(amc.paymentTerms)}</div></div>
             <div class="detail-section"><div class="detail-label">Paid</div><div class="detail-value text-success fw-600">${currency(paidAmt)}</div></div>
-            <div class="detail-section"><div class="detail-label">Balance Due</div><div class="detail-value ${due > 0 ? 'text-danger' : 'text-success'} fw-600">${currency(due)}</div></div>
+            <div class="detail-section"><div class="detail-label">Balance Due</div><div class="detail-value ${due > 0 ? 'text-danger' : 'text-success'} fw-600">${currency(due)}</div></div>` : ''}
         </div>
 
+        ${!isManager ? `
         <div class="section-header mb-12"><span class="section-title fs-sm">Payment History</span>
             <button class="btn btn-sm btn-primary" onclick="openAddPaymentModal('${amc.id}')">+ Add Payment</button>
         </div>
@@ -185,11 +191,11 @@ async function openAMCDetail(amcId) {
                         </tr>`).join('')}
                 </tbody>
             </table>
-        </div>
+        </div>` : ''}
 
         <div class="d-flex gap-8 mt-16 flex-wrap">
             <button class="btn btn-sm btn-secondary" onclick="openAMCModal('${amc.id}')">Edit AMC</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteAMC('${amc.id}')">Delete</button>
+            ${!isManager ? `<button class="btn btn-sm btn-danger" onclick="deleteAMC('${amc.id}')">Delete</button>` : ''}
         </div>
     `);
 }
@@ -237,6 +243,7 @@ async function openAMCModal(amcId = null) {
         </div>
         <div class="form-group"><label>AMC Start Date</label><input class="form-control" id="amc-start" type="date" value="${amc ? amc.startDate : ''}"></div>
         <div class="form-group"><label>AMC End Date</label><input class="form-control" id="amc-end" type="date" value="${amc ? amc.endDate : ''}"></div>
+        ${State.currentUser.role !== 'manager' ? `
         <div class="form-group"><label>Total Contract Amount (₹)</label><input class="form-control" id="amc-amount" type="number" value="${amc ? amc.totalAmount : ''}" placeholder="e.g. 120000"></div>
         <div class="form-group"><label>Payment Terms</label>
             <select class="form-control" id="amc-terms">
@@ -244,19 +251,21 @@ async function openAMCModal(amcId = null) {
                 <option value="full" ${amc && amc.paymentTerms === 'full' ? 'selected' : ''}>Full Payment</option>
                 <option value="quarterly" ${amc && amc.paymentTerms === 'quarterly' ? 'selected' : ''}>Quarterly</option>
             </select>
-        </div>
+        </div>` : ''}
     `, async () => {
         const custId = document.getElementById('amc-cust').value;
         const machId = document.getElementById('amc-mach').value;
         const start = document.getElementById('amc-start').value;
         const end = document.getElementById('amc-end').value;
-        const amount = document.getElementById('amc-amount').value;
-        if (!custId || !machId || !start || !end || !amount) return showToast('All fields are required', 'warning');
+        const isManager = State.currentUser.role === 'manager';
+        const amount = isManager ? (amc ? amc.totalAmount : 0) : document.getElementById('amc-amount').value;
+        if (!custId || !machId || !start || !end) return showToast('All fields are required', 'warning');
+        if (!isManager && !amount) return showToast('Amount is required', 'warning');
         await dbAdd(STORES.amcContracts, {
             id: amc ? amc.id : generateId('AMC'),
             customerId: custId, machineId: machId, startDate: start, endDate: end,
             totalAmount: Number(amount),
-            paymentTerms: document.getElementById('amc-terms').value,
+            paymentTerms: isManager ? (amc ? amc.paymentTerms : 'emi') : document.getElementById('amc-terms').value,
             status: 'active', payments: amc ? amc.payments : [],
             createdAt: amc ? amc.createdAt : new Date().toISOString(),
         });
@@ -290,9 +299,10 @@ async function renderReports() {
         dbGetAll(STORES.customers), dbGetAll(STORES.amcContracts)
     ]);
 
-    const engineers = users.filter(u => u.role === 'engineer');
+    const engineers = users.filter(u => u.role === 'engineer' || u.role === 'manager');
     const custMap = {}; customers.forEach(c => custMap[c.id] = c.name);
     const engMap = {}; engineers.forEach(e => engMap[e.id] = e.name);
+    const isManager = State.currentUser.role === 'manager';
 
     // Engineer-wise stats
     const engStats = engineers.map(e => {
@@ -309,7 +319,7 @@ async function renderReports() {
     const prioCounts = { low: 0, medium: 0, high: 0, critical: 0 };
     tickets.forEach(t => { if (prioCounts[t.priority] !== undefined) prioCounts[t.priority]++; });
 
-    // AMC revenue
+    // AMC revenue (admin only)
     const totalAMCValue = amcs.reduce((s, a) => s + a.totalAmount, 0);
     const collectedAMC = amcs.reduce((s, a) => s + (a.payments || []).reduce((ps, p) => ps + Number(p.amount), 0), 0);
     const pendingAMC = totalAMCValue - collectedAMC;
@@ -330,6 +340,7 @@ async function renderReports() {
                     <div class="stat-icon success"><ion-icon name="checkmark-circle"></ion-icon></div>
                     <div><span class="stat-value">${statusCounts.completed}</span><span class="stat-label">Completed</span></div>
                 </div>
+                ${!isManager ? `
                 <div class="stat-card">
                     <div class="stat-icon warning"><ion-icon name="document-text"></ion-icon></div>
                     <div><span class="stat-value">${currency(totalAMCValue)}</span><span class="stat-label">Total AMC Value</span></div>
@@ -337,7 +348,7 @@ async function renderReports() {
                 <div class="stat-card">
                     <div class="stat-icon ${pendingAMC > 0 ? 'danger' : 'success'}"><ion-icon name="cash-outline"></ion-icon></div>
                     <div><span class="stat-value">${currency(pendingAMC)}</span><span class="stat-label">AMC Pending Payment</span></div>
-                </div>
+                </div>` : ''}
             </div>
 
             <div class="report-grid">

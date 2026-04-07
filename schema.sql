@@ -109,3 +109,7 @@ CREATE TABLE notifications (
 -- 8. Seed Default Admin User
 INSERT INTO users (id, name, email, mobile, password, role, status, "createdAt")
 VALUES ('usr-admin', 'KLT Admin', 'admin@klt.com', '9876543210', 'admin123', 'admin', 'active', CURRENT_TIMESTAMP::text);
+
+-- 9. Seed Default Manager User
+INSERT INTO users (id, name, email, mobile, password, role, status, "createdAt")
+VALUES ('usr-manager', 'Sarah Manager', 'mgr@klt.com', '9876543211', 'mgr123', 'manager', 'active', CURRENT_TIMESTAMP::text);

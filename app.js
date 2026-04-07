@@ -222,6 +222,7 @@ async function doLogin() {
 function renderAppShell() {
     const u = State.currentUser;
     const isAdmin = u.role === 'admin';
+    const isManager = u.role === 'manager';
     const initials = avatarInitials(u.name);
 
     const adminNavLinks = `
@@ -235,7 +236,7 @@ function renderAppShell() {
         </button>
         <div class="nav-section">Management</div>
         <button class="nav-link" onclick="navTo('engineers')" id="nav-engineers">
-            <ion-icon name="people-outline"></ion-icon> Engineers
+            <ion-icon name="people-outline"></ion-icon> Staff
         </button>
         <button class="nav-link" onclick="navTo('customers')" id="nav-customers">
             <ion-icon name="business-outline"></ion-icon> Customers
@@ -249,6 +250,24 @@ function renderAppShell() {
         <div class="nav-section">Insights</div>
         <button class="nav-link" onclick="navTo('reports')" id="nav-reports">
             <ion-icon name="stats-chart-outline"></ion-icon> Reports
+        </button>
+    `;
+
+    const managerNavLinks = `
+        <div class="nav-section">Main</div>
+        <button class="nav-link active" onclick="navTo('dashboard')" id="nav-dashboard">
+            <ion-icon name="grid-outline"></ion-icon> Dashboard
+        </button>
+        <button class="nav-link" onclick="navTo('tickets')" id="nav-tickets">
+            <ion-icon name="ticket-outline"></ion-icon> Service Tickets
+            <span class="nav-badge" id="badge-open">0</span>
+        </button>
+        <div class="nav-section">Management</div>
+        <button class="nav-link" onclick="navTo('customers')" id="nav-customers">
+            <ion-icon name="business-outline"></ion-icon> Customers
+        </button>
+        <button class="nav-link" onclick="navTo('machines')" id="nav-machines">
+            <ion-icon name="hardware-chip-outline"></ion-icon> Machines
         </button>
     `;
 
@@ -268,8 +287,11 @@ function renderAppShell() {
         </button>
     `;
 
+    const activeAdminMode = isAdmin || isManager;
+    const activeNavLinks = isAdmin ? adminNavLinks : isManager ? managerNavLinks : engNavLinks;
+
     document.getElementById('root').innerHTML = `
-        <div class="app-shell ${isAdmin ? '' : 'engineer-mode'}" id="app-shell">
+        <div class="app-shell ${activeAdminMode ? '' : 'engineer-mode'}" id="app-shell">
             <!-- Mobile Sidebar Overlay -->
             <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
 
@@ -280,7 +302,7 @@ function renderAppShell() {
                     <span>AMC Management</span>
                 </div>
                 <nav class="sidebar-nav">
-                    ${isAdmin ? adminNavLinks : engNavLinks}
+                    ${activeNavLinks}
                 </nav>
                 <div class="sidebar-user">
                     <div class="user-avatar">${initials}</div>
@@ -304,9 +326,11 @@ function renderAppShell() {
                         <span class="page-title" id="page-title">Dashboard</span>
                     </div>
                     <div class="top-bar-actions">
-                        <button class="btn-icon" onclick="navTo('${isAdmin ? 'tickets' : 'eng-tickets'}')" title="New Ticket">
+                        ${isAdmin || isManager ? `
+                        <button class="btn-icon" onclick="openTicketModal()" title="New Ticket">
                             <ion-icon name="add-circle-outline" style="font-size:1.4rem"></ion-icon>
                         </button>
+                        ` : ''}
                         <div class="avatar" style="cursor:default" title="${u.name}">${initials}</div>
                     </div>
                 </header>
@@ -338,7 +362,7 @@ function renderAppShell() {
     `;
 
     // Navigate to default view
-    navTo(isAdmin ? 'dashboard' : 'eng-dashboard');
+    navTo(activeAdminMode ? 'dashboard' : 'eng-dashboard');
     updateOpenBadge();
 
     // Enable auto data refresh across the whole app
@@ -425,7 +449,7 @@ async function renderAdminDashboard() {
         dbGetAll(STORES.amcContracts),
     ]);
 
-    const engs = engineers.filter(u => u.role === 'engineer');
+    const engs = engineers.filter(u => u.role === 'engineer' || u.role === 'manager');
     const openTkts = tickets.filter(t => t.status === 'open').length;
     const inProg = tickets.filter(t => t.status === 'in-progress').length;
     const done = tickets.filter(t => t.status === 'completed').length;
@@ -536,7 +560,7 @@ async function renderTicketsView() {
                     <ion-icon name="search"></ion-icon>
                     <input id="ticket-search" placeholder="Search tickets..." oninput="filterTickets()" value="${State.ticketSearch}">
                 </div>
-                <button class="btn btn-primary btn-sm" onclick="openCreateTicketModal()">
+                <button class="btn btn-primary btn-sm" onclick="openTicketModal()">
                     <ion-icon name="add"></ion-icon> New Ticket
                 </button>
             </div>
@@ -588,8 +612,85 @@ function renderFilteredTickets() {
 }
 
 // ============================================================
-// TICKET DETAIL MODAL
+// TICKET MODAL
 // ============================================================
+async function openTicketModal(ticketId = null) {
+    const [t, customers, machines, engineers] = await Promise.all([
+        ticketId ? dbGet(STORES.tickets, ticketId) : Promise.resolve(null),
+        dbGetAll(STORES.customers), dbGetAll(STORES.machines), dbGetAll(STORES.users)
+    ]);
+    const engineerOptions = engineers.filter(e => (e.role === 'engineer' || e.role === 'manager') && e.status === 'active')
+        .map(e => `<option value="${e.id}" ${t && t.assignedTo === e.id ? 'selected' : ''}>${e.name}</option>`).join('');
+
+    openModal('ticket-modal', t ? 'Edit Ticket' : 'Create Ticket', `
+        <div class="form-group">
+            <label>Customer</label>
+            <select class="form-control" id="ct-customer" onchange="loadMachinesForCustomer()">
+                <option value="">— Select Customer —</option>
+                ${customers.map(c => `<option value="${c.id}" ${t && t.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Machine</label>
+            <select class="form-control" id="ct-machine">
+                <option value="">— Select Machine —</option>
+                ${t ? `<option value="${t.machineId}" selected>${t.machineId}</option>` : ''}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Issue Title</label>
+            <input class="form-control" id="ct-title" value="${t ? t.title : ''}" placeholder="Short description">
+        </div>
+        <div class="form-group">
+            <label>Detailed Description</label>
+            <textarea class="form-control" id="ct-desc" rows="3">${t ? t.description : ''}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Priority</label>
+            <select class="form-control" id="ct-priority">
+                <option value="low" ${t && t.priority === 'low' ? 'selected' : ''}>Low</option>
+                <option value="medium" ${!t || t.priority === 'medium' ? 'selected' : ''}>Medium</option>
+                <option value="high" ${t && t.priority === 'high' ? 'selected' : ''}>High</option>
+                <option value="critical" ${t && t.priority === 'critical' ? 'selected' : ''}>Critical</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Assign Engineer (Optional)</label>
+            <select class="form-control" id="ct-engineer">
+                <option value="">— Unassigned (Open Pool) —</option>
+                ${engineerOptions}
+            </select>
+        </div>
+    `, async () => {
+        const custId = document.getElementById('ct-customer').value;
+        const machId = document.getElementById('ct-machine').value;
+        const title = document.getElementById('ct-title').value.trim();
+        const desc = document.getElementById('ct-desc').value.trim();
+        const priority = document.getElementById('ct-priority').value;
+        const engId = document.getElementById('ct-engineer').value;
+
+        if (!custId || !machId || !title) return showToast('Fill all required fields', 'warning');
+
+        const ticket = t || {
+            id: 'TKT-' + Date.now().toString().slice(-6),
+            createdAt: new Date().toISOString(),
+            notes: [], photos: [], rating: null, feedback: ''
+        };
+        Object.assign(ticket, {
+            customerId: custId, machineId: machId, title, description: desc || title,
+            priority, status: engId ? 'assigned' : 'open',
+            assignedTo: engId || null, updatedAt: new Date().toISOString()
+        });
+        await dbAdd(STORES.tickets, ticket);
+        closeModal();
+        showToast('Ticket saved', 'success');
+        updateOpenBadge();
+        if (State.currentView === 'tickets') renderTicketsView();
+        else renderAdminDashboard();
+    });
+    window._allMachines = machines;
+}
+
 async function openTicketDetail(ticketId) {
     const [ticket, customers, machines, engineers] = await Promise.all([
         dbGet(STORES.tickets, ticketId),
@@ -609,7 +710,7 @@ async function openTicketDetail(ticketId) {
     const statusNext = { open: 'assigned', assigned: 'in-progress', 'in-progress': 'completed' };
     const isAdmin = State.currentRole === 'admin';
 
-    const engineerOptions = engineers.filter(e => e.role === 'engineer' && e.status === 'active')
+    const engineerOptions = engineers.filter(e => (e.role === 'engineer' || e.role === 'manager') && e.status === 'active')
         .map(e => `<option value="${e.id}" ${ticket.assignedTo === e.id ? 'selected' : ''}>${e.name}</option>`)
         .join('');
 
@@ -778,82 +879,6 @@ async function saveFeedback(ticketId) {
     closeModal();
 }
 
-// ============================================================
-// CREATE TICKET MODAL
-// ============================================================
-async function openCreateTicketModal() {
-    const [customers, machines, engineers] = await Promise.all([
-        dbGetAll(STORES.customers),
-        dbGetAll(STORES.machines),
-        dbGetAll(STORES.users),
-    ]);
-
-    openModal('create-ticket-modal', 'Create Service Ticket', `
-        <div class="form-group">
-            <label>Customer</label>
-            <select class="form-control" id="ct-customer" onchange="loadMachinesForCustomer()">
-                <option value="">— Select Customer —</option>
-                ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Machine</label>
-            <select class="form-control" id="ct-machine">
-                <option value="">— Select Machine —</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Issue Title</label>
-            <input class="form-control" id="ct-title" placeholder="Short description of the problem">
-        </div>
-        <div class="form-group">
-            <label>Detailed Description</label>
-            <textarea class="form-control" id="ct-desc" rows="3" placeholder="Describe the issue, error codes, observations..."></textarea>
-        </div>
-        <div class="form-group">
-            <label>Priority</label>
-            <select class="form-control" id="ct-priority">
-                <option value="low">Low</option>
-                <option value="medium" selected>Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Assign Engineer (Optional)</label>
-            <select class="form-control" id="ct-engineer">
-                <option value="">— Leave Unassigned —</option>
-                ${engineers.filter(e => e.role === 'engineer' && e.status === 'active')
-                    .map(e => `<option value="${e.id}">${e.name} (${e.area})</option>`).join('')}
-            </select>
-        </div>
-    `, async () => {
-        const custId = document.getElementById('ct-customer').value;
-        const machId = document.getElementById('ct-machine').value;
-        const title = document.getElementById('ct-title').value.trim();
-        const desc = document.getElementById('ct-desc').value.trim();
-        const priority = document.getElementById('ct-priority').value;
-        const engId = document.getElementById('ct-engineer').value;
-
-        if (!custId || !machId || !title) return showToast('Fill all required fields', 'warning');
-
-        const newTicket = {
-            id: 'TKT-' + Date.now().toString().slice(-6),
-            customerId: custId, machineId: machId, title, description: desc || title,
-            priority, status: engId ? 'assigned' : 'open',
-            assignedTo: engId || null, notes: [], photos: [], rating: null, feedback: '',
-            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-        };
-        await dbAdd(STORES.tickets, newTicket);
-        closeModal();
-        showToast('Ticket created: ' + newTicket.id, 'success');
-        updateOpenBadge();
-        renderTicketsView();
-    });
-
-    window._allMachines = machines;
-}
-
 async function loadMachinesForCustomer() {
     const custId = document.getElementById('ct-customer').value;
     const machSel = document.getElementById('ct-machine');
@@ -865,29 +890,29 @@ async function loadMachinesForCustomer() {
 }
 
 // ============================================================
-// ENGINEERS
+// ENGINEERS & MANAGERS
 // ============================================================
 async function renderEngineers() {
     const page = document.getElementById('page-content');
     const users = await dbGetAll(STORES.users);
-    const engineers = users.filter(u => u.role === 'engineer');
+    const staff = users.filter(u => u.role === 'engineer' || u.role === 'manager');
 
     page.innerHTML = `
         <div class="fade-in">
             <div class="section-header mb-16">
-                <span class="section-title">Service Engineers</span>
+                <span class="section-title">Staff Members</span>
                 <button class="btn btn-primary btn-sm" onclick="openEngineerModal()">
-                    <ion-icon name="add"></ion-icon> Add Engineer
+                    <ion-icon name="add"></ion-icon> Add Staff
                 </button>
             </div>
             <div class="data-table-wrapper">
                 <table class="data-table">
                     <thead><tr>
-                        <th>Engineer</th><th>Mobile</th><th>Skill</th><th>Area</th><th>Status</th><th>Actions</th>
+                        <th>Member Details</th><th>Mobile</th><th>Skill</th><th>Area</th><th>Role / Status</th><th>Actions</th>
                     </tr></thead>
                     <tbody>
-                        ${engineers.length === 0 ? `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">No engineers added yet.</td></tr>` :
-                            engineers.map(e => `
+                        ${staff.length === 0 ? `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)">No staff added yet.</td></tr>` :
+                            staff.map(e => `
                             <tr>
                                 <td>
                                     <div class="d-flex align-center gap-12">
@@ -901,11 +926,14 @@ async function renderEngineers() {
                                 <td>${e.mobile}</td>
                                 <td>${e.skill || '—'}</td>
                                 <td>${e.area || '—'}</td>
-                                <td><span class="badge badge-${e.status}">${e.status}</span></td>
+                                <td>
+                                    <span class="badge ${e.role === 'manager' ? 'badge-high' : 'badge-low'} mb-4 d-block" style="width:fit-content">${e.role}</span>
+                                    <span class="badge badge-${e.status}">${e.status}</span>
+                                </td>
                                 <td>
                                     <div class="d-flex gap-8">
                                         <button class="btn btn-sm btn-secondary" onclick="openEngineerModal('${e.id}')">Edit</button>
-                                        <button class="btn btn-sm btn-danger" onclick="deleteEngineer('${e.id}')">Delete</button>
+                                        ${State.currentUser.role === 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteEngineer('${e.id}')">Delete</button>` : ''}
                                     </div>
                                 </td>
                             </tr>`).join('')}
@@ -918,8 +946,14 @@ async function renderEngineers() {
 
 async function openEngineerModal(engId = null) {
     const eng = engId ? await dbGet(STORES.users, engId) : null;
-    openModal('eng-modal', eng ? 'Edit Engineer' : 'Add Engineer', `
+    openModal('eng-modal', eng ? 'Edit Staff' : 'Add Staff', `
         <div class="form-group"><label>Full Name</label><input class="form-control" id="eng-name" value="${eng ? eng.name : ''}" placeholder="e.g. Raj Patel"></div>
+        <div class="form-group"><label>Role</label>
+            <select class="form-control" id="eng-role">
+                <option value="engineer" ${!eng || eng.role === 'engineer' ? 'selected' : ''}>Engineer</option>
+                <option value="manager" ${eng && eng.role === 'manager' ? 'selected' : ''}>Manager</option>
+            </select>
+        </div>
         <div class="form-group"><label>Mobile</label><input class="form-control" id="eng-mobile" value="${eng ? eng.mobile : ''}" placeholder="10-digit mobile"></div>
         <div class="form-group"><label>Email</label><input class="form-control" id="eng-email" value="${eng ? eng.email : ''}" placeholder="engineer@klt.com"></div>
         <div class="form-group"><label>Password</label><input class="form-control" id="eng-pass" value="${eng ? eng.password : ''}" placeholder="Login password"></div>
@@ -942,7 +976,7 @@ async function openEngineerModal(engId = null) {
             id: eng ? eng.id : generateId('USR'),
             name, mobile, email,
             password: pass || (eng ? eng.password : 'eng123'),
-            role: 'engineer',
+            role: document.getElementById('eng-role').value,
             skill: document.getElementById('eng-skill').value.trim(),
             area: document.getElementById('eng-area').value.trim(),
             status: document.getElementById('eng-status').value,
@@ -989,7 +1023,7 @@ async function renderCustomers() {
                                 <td>${c.city || '—'}</td>
                                 <td><div class="d-flex gap-8">
                                     <button class="btn btn-sm btn-secondary" onclick="openCustomerModal('${c.id}')">Edit</button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteCustomer('${c.id}')">Delete</button>
+                                    ${State.currentUser.role === 'admin' ? `<button class="btn btn-sm btn-danger" onclick="deleteCustomer('${c.id}')">Delete</button>` : ''}
                                 </div></td>
                             </tr>`).join('')}
                     </tbody>
